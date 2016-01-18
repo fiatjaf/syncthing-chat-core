@@ -1,0 +1,16 @@
+{
+  "name": "syncthing-chat-core",
+  "version": "0.0.1",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Giovanni T. Parra",
+  "license": "MIT",
+  "dependencies": {
+    "home-dir": "^1.0.0",
+    "node-syncthing": "^3.1.1",
+    "pixl-xml": "^1.0.4"
+  }
+}
