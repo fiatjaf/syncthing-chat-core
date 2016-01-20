@@ -1,6 +1,7 @@
 'use strict'
 
 const NS = require('node-syncthing')
+const delay = require('delay')
 const child_process = require('child_process')
 
 const helpers = require('./helpers')
@@ -10,12 +11,13 @@ const st = new NS({
   hostname: config.gui.address.split(':')[0],
   port: config.gui.address.split(':')[1],
   apiKey: config.gui.apikey,
+  https: config.gui.tls,
   eventListener: true
 })
 
 var stprocess = null
 process.on('exit', () => {
-  if (stprocess.kill) stprocess.kill()
+  if (stprocess && stprocess.kill) stprocess.kill()
 })
 
 module.exports = {
@@ -40,35 +42,41 @@ function start () {
     return Promise.resolve()
   }
 
-  return st.system.ping().then(init).catch(function () {
-    console.log('syncthing is not running, starting syncthing...')
-    stprocess = child_process.spawn('env', ['syncthing'])
-    stprocess.stdout.on('data', (data) => {
-      process.stdout.write(`stdout: ${data}`)
-    })
-    stprocess.stderr.on('data', (data) => {
-      process.stdout.write(`stderr: ${data}`)
-    })
-
-    stprocess.on('close', (code) => {
-      process.stdout.write(`child process exited with code ${code}`)
-    })
-
-    setTimeout(start, 500)
+  return st.system.ping().then(init, e => {
+    if (e.code === 'ECONNREFUSED') {
+      return delay(5000)
+      .then(function () {
+        console.log('syncthing is not running, starting syncthing...')
+        stprocess = child_process.spawn('env', ['syncthing'])
+        stprocess.stdout.on('data', (data) => {
+          process.stdout.write(`stdout: ${data}`)
+        })
+        stprocess.stderr.on('data', (data) => {
+          process.stdout.write(`stderr: ${data}`)
+        })
+        stprocess.on('close', (code) => {
+          process.stdout.write(`child process exited with code ${code}`)
+        })
+      })
+      .then(delay(5000))
+      .then(start)
+    }
+    throw e
   })
+  .catch(e => console.log('start', e, e.stack))
 }
 
 function init () {
   /* store our deviceID */
   return st.system.status().then(status => {
     module.exports.myID = status.myID
-  }).catch(e => console.log('init: ' + e.stack))
+  }).catch(e => console.log('init', e, e.stack))
 
   /* set the configs we need */
 }
 
 function listDevices () {
-  return start.then(() => {
+  return start().then(() => {
     return st.system.getConfig()
   })
   .then(config => {
@@ -93,16 +101,7 @@ function listDevices () {
 }
 
 function listChats (config) {
-  return start.then(() => {
-    var c
-    if (config) {
-      c = Promise.resolve(config)
-    } else {
-      c = st.system.getConfig()
-    }
-    return c
-  })
-  .then(config => {
+  function getFolders (config) {
     var chatFolders = []
     config.folders.forEach(f => {
       if (f.id.slice(0, 6) === 'chat::') {
@@ -111,11 +110,19 @@ function listChats (config) {
       }
     })
     return chatFolders
-  })
+  }
+
+  if (config) {
+    return getFolders(config)
+  } else {
+    return start()
+    .then(() => st.system.getConfig())
+    .then(getFolders)
+  }
 }
 
 function createChat (deviceID) {
-  return start.then(() => {
+  return start().then(() => {
     return st.system.getConfig()
   })
   .then(config => {
@@ -135,12 +142,13 @@ function createChat (deviceID) {
     }
     for (let i = 0; i < config.devices.length; i++) {
       let dev = config.devices[i]
-      if (dev.id === deviceID) {
+      if (dev.deviceID === deviceID) {
         // create the new folder
         console.log(`Creating chat with ${dev.name || dev.id}...`)
         config.folders.push(folderToCreate)
         return st.system.setConfig(config)
-        .then(st.restart())
+        .then(delay(400))
+        .then(st.system.restart())
         .then(() => folderToCreate)
         .catch(e => console.log('POST config: ' + e.stack))
       }
@@ -148,7 +156,7 @@ function createChat (deviceID) {
     throw new Error(`${deviceID} is not a device we know. Please add it first using the Syncthing interface.`)
   })
   .then(folder => {
-    // folder is created here
+    // folder is already created here
   })
   .catch(e => console.log('createChat: ' + e.stack))
 }

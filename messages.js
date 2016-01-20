@@ -11,41 +11,45 @@ var chats
 listChats().then(folders => chats = folders)
 
 /* turn syncthing events into message events */
-st.on('deviceConnected', event => {
+st.on('deviceConnected', data => {
   chats.forEach(c => {
-    if (c.deviceID === event.data.id) {
+    if (c.deviceID === data.id) {
       st.emit('someoneOnline', {
-        time: event.time,
-        deviceID: event.data.id
+        time: (new Date()).toISOString(),
+        deviceID: data.id
       })
     }
   })
 })
 
-st.on('deviceDisconnected', event => {
+st.on('deviceDisconnected', data => {
   chats.forEach(c => {
-    if (c.deviceID === event.data.id) {
+    if (c.deviceID === data.id) {
       st.emit('someoneOffline', {
-        time: event.time,
-        deviceID: event.data.id
+        time: (new Date()).toISOString(),
+        deviceID: data.id
       })
     }
   })
 })
 
-st.on('itemFinished', event => {
+st.on('folderRejected', data => {
+  // accept chat from device
+})
+
+st.on('itemFinished', data => {
   chats.forEach(c => {
-    if (c.id === event.data.folder) {
-      if (event.data.error) {
-        console.log('failedToGetMessage: ', event)
-        st.emit('failedToGetMessage', event)
+    if (c.id === data.folder) {
+      if (data.error) {
+        console.log('failedToGetMessage: ', data)
+        st.emit('failedToGetMessage', data)
       } else {
-        console.log('gotMessage: ', event)
+        console.log('gotMessage: ', data)
         st.emit('gotMessage', {
           deviceID: c.deviceID,
-          time: event.time,
-          timeSent: event.data.item.slice(0, 24),
-          message: fs.readFileSync(path.join(c.path, event.data.item), 'utf-8')
+          time: (new Date()).toISOString(),
+          timeSent: data.item.slice(0, 24),
+          message: fs.readFileSync(path.join(c.path, data.item), 'utf-8')
         })
       }
     }
@@ -76,11 +80,13 @@ function send (deviceID, contents) {
 
   chats.forEach(c => {
     if (c.deviceID === deviceID) {
+      let location = path.join(c.path, filename)
+
       // actually write the file
-      fs.writeFileSync(path.join(c.path, filename), contents)
+      fs.writeFileSync(location, contents)
 
       // notify syncthing we have a new file
-      st.db.scan(c.id)
+      st.db.scan(c.id, location)
     }
   })
 }

@@ -1,6 +1,7 @@
 'use strict'
 
 const fs = require('fs')
+const md5 = require('md5')
 const xml = require('pixl-xml')
 const path = require('path')
 const homeDir = require('home-dir')
@@ -44,9 +45,10 @@ function generateFolderConfig (myId, deviceId) {
   // chats will be stored somewhere like ./syncthing-chat/*
   let chatPath = homeDir('syncthing-chat/' + deviceId)
   let bothDevices = [myId, deviceId].sort()
+  let folderName = 'chat::' + md5(bothDevices.join(':'))
 
   return {
-    'id': 'chat::' + bothDevices.join('|'),
+    'id': folderName,
     'path': chatPath,
     'devices': [{'deviceID': deviceId}, {'deviceID': myId}],
     'readOnly': false,
